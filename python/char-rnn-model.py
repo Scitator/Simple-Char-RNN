@@ -126,12 +126,6 @@ def rnn_test():
         x = [char_to_index[ch] for ch in data[p:p+sequence_length]]
         y = [char_to_index[ch] for ch in data[p+1:p+sequence_length+1]]
 
-        # sample from the model
-        if n % print_step == 0:
-            sample_ix = rnn_sample(h_prev, x[0], 200)
-            txt = ''.join(index_to_char[ix] for ix in sample_ix)
-            print ('----\n {} \n----'.format(txt))
-
         # forward sequence_length characters through the network and fetch gradient
         loss, dW_xh, dW_hh, dW_hy, db_h, db_y, h_prev = rnn_step(x, y, h_prev)
         smooth_loss = smooth_loss * 0.999 + loss * 0.001
@@ -139,6 +133,9 @@ def rnn_test():
         # print progress
         if n % print_step == 0:
             print ('iter {}, loss: {}'.format(n, smooth_loss))
+            sample_ix = rnn_sample(h_prev, x[0], 200)
+            txt = ''.join(index_to_char[ix] for ix in sample_ix)
+            print ('----\n {} \n----'.format(txt))
 
         # parameter update with Adagrad
         for param, dparam, mem in zip([W_xh, W_hh, W_hy, b_h, b_y],
