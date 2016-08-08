@@ -24,17 +24,17 @@ CONTINUE_LEARNING = False
 
 # weights
 # input to hidden
-W_xh = np.random.randn(hidden_size, vocabulary_size)*0.01
+W_xh = np.random.randn(vocabulary_size, hidden_size)*0.01
 # hidden to hidden
 W_hh = np.random.randn(hidden_size, hidden_size)*0.01
 # hidden to output
-W_hy = np.random.randn(vocabulary_size, hidden_size)*0.01
+W_hy = np.random.randn(hidden_size, vocabulary_size)*0.01
 
 # biases
 # hidden bias
-b_h = np.zeros((hidden_size, 1))
+b_h = np.zeros((hidden_size))
 # output bias
-b_y = np.zeros((vocabulary_size, 1))
+b_y = np.zeros((vocabulary_size))
 
 
 def softmax(x):
@@ -58,16 +58,17 @@ def rnn_step(x : list,
     # forward pass
     for t in range(len(x)):
         # encode in 1-of-k representation
-        x_s[t] = np.zeros((vocabulary_size, 1))
+        x_s[t] = np.zeros((vocabulary_size))
         x_s[t][x[t]] = 1
         # compute rnn-cell hidden state
-        h_s[t] = np.tanh(np.dot(W_xh, x_s[t]) + np.dot(W_hh, h_s[t-1]) + b_h)
+        h_s[t] = np.tanh(np.dot(x_s[t], W_xh) + np.dot(h_s[t-1], W_hh) + b_h)
         # unnormalized log probabilities for next chars
-        y_s[t] = np.dot(W_hy, h_s[t]) + b_y
+        y_s[t] = np.dot(h_s[t], W_hy) + b_y
         # probabilities for next chars# hidden to output
         p_s[t] = softmax(y_s[t])
         # softmax cross-entropy loss
-        loss += -np.log(p_s[t][y[t], 0])
+        # import pdb; pdb.set_trace()
+        loss += -np.log(p_s[t][y[t]])
 
     # backward pass
     dW_xh, dW_hh, dW_hy = np.zeros_like(W_xh), np.zeros_like(W_hh), np.zeros_like(W_hy)
@@ -78,17 +79,20 @@ def rnn_step(x : list,
         dy = np.copy(p_s[t])
         dy[y[t]] -= 1
 
-        dW_hy += np.dot(dy, h_s[t].T)
+        dW_hy += np.dot(h_s[t][:, np.newaxis], dy[np.newaxis, :])
         db_y += dy
 
         # backprop into h
-        dh = np.dot(W_hy.T, dy) + dh_next
+        dh = np.dot(W_hy, dy) + dh_next
         # backprop through tanh nonlinearity
         dh_raw = (1 - h_s[t] * h_s[t]) * dh
         db_h += dh_raw
 
-        dW_xh += np.dot(dh_raw, x_s[t].T)
-        dW_hh += np.dot(dh_raw, h_s[t-1].T)
+        dW_xh += np.dot(x_s[t][:, np.newaxis], dh_raw.T[np.newaxis, :])
+        dW_hh += np.dot(h_s[t-1][:, np.newaxis], dh_raw.T[np.newaxis, :])
+
+        # import pdb; pdb.set_trace()
+
         dh_next = np.dot(W_hh.T, dh_raw)
 
     # hack for preventing exploding gradients
@@ -97,6 +101,14 @@ def rnn_step(x : list,
 
     return loss, dW_xh, dW_hh, dW_hy, db_h, db_y, h_s[len(x)-1]
 
+# def _simple_lrp(R, X, W, b):
+# 	'''
+# 	LRP according to Eq(56) in DOI: 10.1371/journal.pone.0130140
+# 	'''
+# 	Z = W[na,:,:] * X[:,:,na] #localized preactivations
+# 	Zs = Z.sum(axis=1)[:,na,:] + b[na,na,:] #preactivations
+# 	return ((Z / Zs) * R[:,na,:]).sum(axis=2)
+
 def rnn_sample(h, index_seed, n):
     """
     sample a sequence of integers from the model
@@ -104,15 +116,15 @@ def rnn_sample(h, index_seed, n):
     """
     global W_xh, W_hh, W_hy, b_h, b_y
 
-    x = np.zeros((vocabulary_size, 1))
+    x = np.zeros((vocabulary_size))
     x[index_seed] = 1
     indices = []
     for t in range(n):
-        h = np.tanh(np.dot(W_xh, x) + np.dot(W_hh, h) + b_h)
-        y = np.dot(W_hy, h) + b_y
+        h = np.tanh(np.dot(x, W_xh) + np.dot(h, W_hh) + b_h)
+        y = np.dot(h, W_hy) + b_y
         p = softmax(y)
         ix = np.random.choice(range(vocabulary_size), p=p.ravel())
-        x = np.zeros((vocabulary_size, 1))
+        x = np.zeros((vocabulary_size))
         x[ix] = 1
         indices.append(ix)
     return indices
@@ -155,7 +167,7 @@ def rnn_run():
         # prepare x (we're sweeping from left to right in steps sequence_length long)
         if p + sequence_length + 1 >= len(data) or n_ == 0:
             # reset RNN memory
-            h_prev = np.zeros((hidden_size,1))
+            h_prev = np.zeros((hidden_size))
             # go from start of data
             p = 0
 
