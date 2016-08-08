@@ -7,6 +7,7 @@ from optparse import OptionParser
 import tensorflow as tf
 import numpy as np
 from data_io import *
+import os
 
 
 # hyperparameters
@@ -26,52 +27,36 @@ h = tf.placeholder(tf.float32, [1, hidden_size], name="h")
 
 initializer = tf.random_normal_initializer(stddev=0.1)
 
-# model parameters
+# rnn parameters initialization
 with tf.variable_scope("rnn", reuse=False) as rnn_scope:
-    # weights
-    # input to hidden
     W_xh = tf.get_variable("W_xh", [vocabulary_size, hidden_size],
                            tf.float32, initializer=initializer)
-    # hidden to hidden
     W_hh = tf.get_variable("W_hh", [hidden_size, hidden_size],
                            tf.float32, initializer=initializer)
-    # hidden to output
     W_hy = tf.get_variable("W_hy", [hidden_size, vocabulary_size],
                            tf.float32, initializer=initializer)
-
-    # biases
-    # hidden bias
     b_h = tf.get_variable("b_h", [hidden_size],
                           tf.float32, initializer=initializer)
-    # output bias
     b_y = tf.get_variable("b_y", [vocabulary_size],
                           tf.float32, initializer=initializer)
 
-# rnn model
+# rnn parameters
 with tf.variable_scope("rnn", reuse=True) as rnn_scope:
-    # weights
-    # input to hidden
     W_xh = tf.get_variable("W_xh", [vocabulary_size, hidden_size],
                            tf.float32)
-    # hidden to hidden
     W_hh = tf.get_variable("W_hh", [hidden_size, hidden_size],
                            tf.float32)
-    # hidden to output
     W_hy = tf.get_variable("W_hy", [hidden_size, vocabulary_size],
                            tf.float32)
-
-    # biases
-    # hidden bias
     b_h = tf.get_variable("b_h", [hidden_size],
                           tf.float32)
-    # output bias
     b_y = tf.get_variable("b_y", [vocabulary_size],
                           tf.float32)
 
 def tf_one_hot(x):
     return np.eye(vocabulary_size)[x]
 
-def rnn_run():
+def build_graph():
     # char-rnn model (aka forward pass)
     # as we don't need to do backward pass it is earier
     y_s = []
@@ -84,19 +69,28 @@ def rnn_run():
 
     # model optimizers (aka backward pass)
     y_pred = tf.concat(0, y_s)
-    p_s = tf.nn.softmax(y_s[-1])
-
+    p_pred = tf.nn.softmax(y_s[-1])
+    # loss function
     loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(y_pred, y))
+    # optimization
     minimizer = tf.train.AdamOptimizer()
     grad_var = minimizer.compute_gradients(loss)
-
     # hack for preventing exploding gradients
     grad_var = [(tf.clip_by_value(grad, -5.0, 5.0), var) \
                     for grad, var in grad_var]
 
     # update
     update = minimizer.apply_gradients(grad_var)
+
+    return {
+        "h_prev": h_prev,
+        "loss": loss,
+        "update": update,
+        "p_pred": p_pred
+    }
+
+def rnn_run(graph):
 
     init = tf.initialize_all_variables()
     saver = tf.train.Saver()
@@ -106,6 +100,8 @@ def rnn_run():
         n, n_, p = 0, 0, 0
 
         if model_filepath and CONTINUE_LEARNING:
+            print ('loading model from {}'.format(
+                os.path.abspath(model_filepath)))
             saver.restore(sess, model_filepath)
 
         while n <= max_steps:
@@ -119,7 +115,9 @@ def rnn_run():
             x_ = tf_one_hot(x_)
             y_ = tf_one_hot(y_)
 
-            h_prev_, loss_, _ = sess.run([h_prev, loss, update],
+            h_prev_, loss_, _ = sess.run([graph['h_prev'],
+                                          graph['loss'],
+                                          graph['update']],
                                          feed_dict={x: x_,
                                                     y: y_,
                                                     h: h_prev_})
@@ -139,7 +137,8 @@ def rnn_run():
                 h_prev_sample = np.copy(h_prev_)
                 for t in range(200):
                     sample_x = tf_one_hot(sample_indeces)
-                    p_s_, h_prev_sample = sess.run([p_s, h_prev],
+                    p_s_, h_prev_sample = sess.run([graph['p_pred'],
+                                                    graph['h_prev']],
                                                    feed_dict={x: sample_x,
                                                               h: h_prev_sample})
                     y_next = np.random.choice(range(vocabulary_size),
@@ -157,6 +156,8 @@ def rnn_run():
             n_ += 1
 
         if model_filepath:
+            print ('writing model to {}'.format(
+                os.path.abspath(model_filepath)))
             saver.save(sess, model_filepath)
 
 if __name__ == "__main__":
@@ -176,5 +177,5 @@ if __name__ == "__main__":
 
     model_filepath = options.model_filepath
     CONTINUE_LEARNING = options.continue_learning
-
-    rnn_run()
+    graph = build_graph()
+    rnn_run(graph)
