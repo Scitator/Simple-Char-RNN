@@ -11,10 +11,10 @@ import os
 
 
 # hyperparameters
-learning_rate   = 1e-1
+learning_rate   = 1e-4
 sequence_length = 25 # number of step_s to unroll the RNN for
 hidden_size     = 100 # size of hidden layer of neurons
-max_steps = 100000
+max_steps = 1000000
 print_log_step = 1000
 print_sample_step = 10000
 
@@ -74,7 +74,7 @@ def build_graph():
     loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(y_pred, y))
     # optimization
-    minimizer = tf.train.AdamOptimizer()
+    minimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
     grad_var = minimizer.compute_gradients(loss)
     # hack for preventing exploding gradients
     grad_var = [(tf.clip_by_value(grad, -5.0, 5.0), var) \

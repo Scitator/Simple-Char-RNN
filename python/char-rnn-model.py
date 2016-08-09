@@ -4,16 +4,17 @@ Created on 29 July 2016
 '''
 # raw version
 import numpy as np
+na = np.newaxis
 from optparse import OptionParser
 from data_io import *
 from model_io import *
 
 
 # hyperparameters
-learning_rate   = 1e-1
+learning_rate   = 1e-4
 sequence_length = 25 # number of step_s to unroll the RNN for
 hidden_size     = 100 # size of hidden layer of neurons
-max_steps = 100000
+max_steps = 1000000
 print_log_step = 1000
 print_sample_step = 10000
 
@@ -101,21 +102,12 @@ def rnn_step(x : list,
 
     return loss, dW_xh, dW_hh, dW_hy, db_h, db_y, h_s[len(x)-1]
 
-# def _simple_lrp(R, X, W, b):
-# 	'''
-# 	LRP according to Eq(56) in DOI: 10.1371/journal.pone.0130140
-# 	'''
-# 	Z = W[na,:,:] * X[:,:,na] #localized preactivations
-# 	Zs = Z.sum(axis=1)[:,na,:] + b[na,na,:] #preactivations
-# 	return ((Z / Zs) * R[:,na,:]).sum(axis=2)
-
 def rnn_sample(h, index_seed, n):
     """
     sample a sequence of integers from the model
     h is memory state, seed_ix is seed letter for first time step
     """
     global W_xh, W_hh, W_hy, b_h, b_y
-
     x = np.zeros((vocabulary_size))
     x[index_seed] = 1
     indices = []
