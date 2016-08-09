@@ -46,7 +46,7 @@ def rnn_step(x : list,
              h_prev : np.array):
     """
     x, y - list of integers,
-    h_prev - Hx1 array of previous hidden state.
+    h_prev - 1xH array of previous hidden state.
 
     returns loss, gradients, and previous hidden state
     """
@@ -68,8 +68,7 @@ def rnn_step(x : list,
         # probabilities for next chars# hidden to output
         p_s[t] = softmax(y_s[t])
         # softmax cross-entropy loss
-        # import pdb; pdb.set_trace()
-        loss += -np.log(p_s[t][y[t]])
+        loss += -np.log(p_s[t][0, y[t]])
 
     # backward pass
     dW_xh, dW_hh, dW_hy = np.zeros_like(W_xh), np.zeros_like(W_hh), np.zeros_like(W_hy)
@@ -78,23 +77,21 @@ def rnn_step(x : list,
 
     for t in reversed(range(len(x))):
         dy = np.copy(p_s[t])
-        dy[y[t]] -= 1
+        dy[0, y[t]] -= 1
 
-        dW_hy += np.dot(h_s[t][:, np.newaxis], dy[np.newaxis, :])
-        db_y += dy
+        dW_hy += np.dot(h_s[t].T, dy)
+        db_y += dy[0, :]
 
         # backprop into h
-        dh = np.dot(W_hy, dy) + dh_next
+        dh = np.dot(dy, W_hy.T) + dh_next
         # backprop through tanh nonlinearity
         dh_raw = (1 - h_s[t] * h_s[t]) * dh
-        db_h += dh_raw
+        db_h += dh_raw[0, :]
 
-        dW_xh += np.dot(x_s[t][:, np.newaxis], dh_raw.T[np.newaxis, :])
-        dW_hh += np.dot(h_s[t-1][:, np.newaxis], dh_raw.T[np.newaxis, :])
+        dW_xh += np.dot(x_s[t].T[:, na], dh_raw)
+        dW_hh += np.dot(h_s[t-1].T, dh_raw)
 
-        # import pdb; pdb.set_trace()
-
-        dh_next = np.dot(W_hh.T, dh_raw)
+        dh_next = np.dot(dh_raw, W_hh.T)
 
     # hack for preventing exploding gradients
     for dparam in [dW_xh, dW_hh, dW_hy, db_h, db_y]:
@@ -159,7 +156,7 @@ def rnn_run():
         # prepare x (we're sweeping from left to right in steps sequence_length long)
         if p + sequence_length + 1 >= len(data) or n_ == 0:
             # reset RNN memory
-            h_prev = np.zeros((hidden_size))
+            h_prev = np.zeros((1, hidden_size))
             # go from start of data
             p = 0
 
